@@ -50,7 +50,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js" defer></script>
 
 <style>
   :root{
@@ -1154,56 +1153,163 @@
     });
   }
 
-  /* ---------------- Workforce Intelligence Dashboard charts (Chart.js, illustrative only) ---------------- */
-  function initDashboardCharts(){
-    if(typeof Chart === 'undefined'){ return; }
+  /* ---------------- Workforce Intelligence Dashboard charts ----------------
+     Hand-drawn on <canvas> with plain 2D context — no external chart library,
+     so these always render regardless of network conditions or ad-blockers. */
+  function fitCanvas(canvas){
+    var cssWidth = canvas.clientWidth || canvas.parentElement.clientWidth || 300;
+    var cssHeight = parseInt(canvas.getAttribute('height'), 10) || 150;
+    var dpr = window.devicePixelRatio || 1;
+    canvas.width = cssWidth * dpr;
+    canvas.height = cssHeight * dpr;
+    canvas.style.width = cssWidth + 'px';
+    canvas.style.height = cssHeight + 'px';
+    var ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx: ctx, w: cssWidth, h: cssHeight };
+  }
+
+  function drawForecastLine(canvas){
+    var f = fitCanvas(canvas), ctx = f.ctx, w = f.w, h = f.h;
+    var pad = { l:28, r:10, t:16, b:22 };
+    var plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+    var labels = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    var forecast = [62,58,65,70,74,50,40];
+    var actual = [60,61,63,73,71,48,44];
+    var max = Math.max.apply(null, forecast.concat(actual)) * 1.15;
     var isLight = root.getAttribute('data-theme') === 'light';
     var gridColor = isLight ? '#DBDFEA' : '#29344F';
     var textColor = isLight ? '#59668A' : '#8D9BB8';
-    Chart.defaults.color = textColor;
-    Chart.defaults.font.family = "'JetBrains Mono', monospace";
-    Chart.defaults.font.size = 10.5;
 
-    new Chart(document.getElementById('forecastChart'), {
-      type:'line',
-      data:{
-        labels:['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],
-        datasets:[
-          { label:'Forecast', data:[62,58,65,70,74,50,40], borderColor:'#F0A73B', backgroundColor:'#F0A73B22', tension:.35, fill:true, pointRadius:0 },
-          { label:'Actual', data:[60,61,63,73,71,48,44], borderColor:'#35C9A6', backgroundColor:'transparent', tension:.35, borderDash:[4,3], pointRadius:0 }
-        ]
-      },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{ labels:{ boxWidth:10, font:{size:10.5} } } },
-        scales:{ x:{ grid:{ color:gridColor } }, y:{ grid:{ color:gridColor } } }
+    ctx.clearRect(0,0,w,h);
+    ctx.strokeStyle = gridColor; ctx.lineWidth = 1; ctx.font = '9.5px JetBrains Mono, monospace'; ctx.fillStyle = textColor;
+    var gridLines = 4;
+    for(var g=0; g<=gridLines; g++){
+      var gy = pad.t + (plotH/gridLines)*g;
+      ctx.beginPath(); ctx.moveTo(pad.l, gy); ctx.lineTo(w-pad.r, gy); ctx.stroke();
+    }
+    labels.forEach(function(lb, i){
+      var x = pad.l + (plotW/(labels.length-1))*i;
+      ctx.fillText(lb, x-9, h-4);
+    });
+
+    function drawSeries(data, color, dashed, fill){
+      var pts = data.map(function(v,i){ return { x: pad.l + (plotW/(data.length-1))*i, y: pad.t + plotH - (v/max)*plotH }; });
+      ctx.beginPath();
+      ctx.setLineDash(dashed ? [4,3] : []);
+      ctx.strokeStyle = color; ctx.lineWidth = 2;
+      pts.forEach(function(p,i){ i===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y); });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if(fill){
+        ctx.lineTo(pts[pts.length-1].x, pad.t+plotH);
+        ctx.lineTo(pts[0].x, pad.t+plotH);
+        ctx.closePath();
+        ctx.fillStyle = color + '22';
+        ctx.fill();
       }
-    });
+    }
+    drawSeries(forecast, '#F0A73B', false, true);
+    drawSeries(actual, '#35C9A6', true, false);
 
-    new Chart(document.getElementById('capacityChart'), {
-      type:'doughnut',
-      data:{
-        labels:['Internal','Shared Services','Outsourced'],
-        datasets:[{ data:[45,30,25], backgroundColor:['#35C9A6','#F0A73B','#29344F'], borderWidth:0 }]
-      },
-      options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ boxWidth:8, font:{size:9.5} } } } }
-    });
+    // legend
+    ctx.font = '10px JetBrains Mono, monospace';
+    ctx.fillStyle = '#F0A73B'; ctx.fillRect(pad.l, 2, 8, 8);
+    ctx.fillStyle = textColor; ctx.fillText('Forecast', pad.l+12, 10);
+    ctx.fillStyle = '#35C9A6'; ctx.fillRect(pad.l+80, 2, 8, 8);
+    ctx.fillStyle = textColor; ctx.fillText('Actual', pad.l+92, 10);
+  }
 
-    new Chart(document.getElementById('queueChart'), {
-      type:'bar',
-      data:{
-        labels:['Voice','Chat','Email','Back-office'],
-        datasets:[{ data:[72,58,40,65], backgroundColor:'#35C9A6', borderRadius:4 }]
-      },
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        plugins:{ legend:{ display:false } },
-        scales:{ x:{ grid:{ display:false } }, y:{ grid:{ color:gridColor }, ticks:{ display:false } } }
-      }
+  function drawCapacityDonut(canvas){
+    var f = fitCanvas(canvas), ctx = f.ctx, w = f.w, h = f.h;
+    var data = [ {label:'Internal', value:45, color:'#35C9A6'}, {label:'Shared Services', value:30, color:'#F0A73B'}, {label:'Outsourced', value:25, color:'#29344F'} ];
+    var isLight = root.getAttribute('data-theme') === 'light';
+    var textColor = isLight ? '#59668A' : '#8D9BB8';
+    var cx = w/2, cy = (h-30)/2 + 4, r = Math.min(cx,cy) - 8, inner = r*0.6;
+    ctx.clearRect(0,0,w,h);
+    var total = data.reduce(function(s,d){ return s+d.value; }, 0);
+    var start = -Math.PI/2;
+    data.forEach(function(d){
+      var angle = (d.value/total) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(cx,cy);
+      ctx.arc(cx, cy, r, start, start+angle);
+      ctx.closePath();
+      ctx.fillStyle = d.color;
+      ctx.fill();
+      start += angle;
     });
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath(); ctx.arc(cx,cy,inner,0,Math.PI*2); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+
+    // legend row below
+    ctx.font = '9.5px JetBrains Mono, monospace';
+    var lx = 4, ly = h-14;
+    data.forEach(function(d){
+      ctx.fillStyle = d.color; ctx.fillRect(lx, ly-8, 7, 7);
+      ctx.fillStyle = textColor;
+      var label = d.label.length > 10 ? d.label.slice(0,9)+'…' : d.label;
+      ctx.fillText(label, lx+10, ly-1);
+      lx += ctx.measureText(label).width + 26;
+    });
+  }
+
+  function drawQueueBars(canvas){
+    var f = fitCanvas(canvas), ctx = f.ctx, w = f.w, h = f.h;
+    var labels = ['Voice','Chat','Email','Back-office'];
+    var data = [72,58,40,65];
+    var isLight = root.getAttribute('data-theme') === 'light';
+    var textColor = isLight ? '#59668A' : '#8D9BB8';
+    var pad = { l:6, r:6, t:8, b:20 };
+    var plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+    var max = Math.max.apply(null, data) * 1.2;
+    var barW = plotW / data.length * 0.5;
+    var gap = plotW / data.length;
+
+    ctx.clearRect(0,0,w,h);
+    ctx.font = '9.5px JetBrains Mono, monospace'; ctx.fillStyle = textColor; ctx.textAlign = 'center';
+    data.forEach(function(v, i){
+      var barH = (v/max) * plotH;
+      var x = pad.l + gap*i + (gap-barW)/2;
+      var y = pad.t + plotH - barH;
+      ctx.fillStyle = '#35C9A6';
+      var r = 4;
+      ctx.beginPath();
+      ctx.moveTo(x, y+r);
+      ctx.arcTo(x, y, x+r, y, r);
+      ctx.lineTo(x+barW-r, y);
+      ctx.arcTo(x+barW, y, x+barW, y+r, r);
+      ctx.lineTo(x+barW, pad.t+plotH);
+      ctx.lineTo(x, pad.t+plotH);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = textColor;
+      ctx.fillText(labels[i], x+barW/2, h-5);
+    });
+    ctx.textAlign = 'left';
+  }
+
+  function initDashboardCharts(){
+    var forecastEl = document.getElementById('forecastChart');
+    var capacityEl = document.getElementById('capacityChart');
+    var queueEl = document.getElementById('queueChart');
+    if(!forecastEl || !capacityEl || !queueEl){ return; }
+    drawForecastLine(forecastEl);
+    drawCapacityDonut(capacityEl);
+    drawQueueBars(queueEl);
   }
   if(document.readyState === 'complete'){ initDashboardCharts(); }
   else { window.addEventListener('load', initDashboardCharts); }
+  window.addEventListener('resize', function(){
+    clearTimeout(window.__dashResizeTimer);
+    window.__dashResizeTimer = setTimeout(initDashboardCharts, 200);
+  });
+  // Redraw when theme toggles, since chart colors depend on light/dark tokens
+  document.getElementById('themeToggle').addEventListener('click', function(){
+    setTimeout(initDashboardCharts, 50);
+  });
+
 
   /* ---------------- Ask About Prince (rule-based assistant, content sourced from this page) ---------------- */
   (function(){
